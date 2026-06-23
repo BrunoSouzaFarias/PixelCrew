@@ -93,6 +93,7 @@ export interface OfficeState {
   mapData: any;
   pets: Record<string, Pet>;
   isPartyMode: boolean;
+  customLayouts?: Record<string, any[] | null>;
 }
 
 export type HostMessage =

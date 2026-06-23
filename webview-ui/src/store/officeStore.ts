@@ -46,6 +46,7 @@ export const useOfficeStore = create<OfficeStore>((set, get) => ({
   theme: 'dark',
   locale: 'pt-BR',
   customNames: {},
+  customLayouts: {},
   
   // Inicialização do estado novo
   isDecorationMode: false,
