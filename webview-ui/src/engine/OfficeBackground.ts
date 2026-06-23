@@ -202,6 +202,18 @@ export class TileMapRenderer {
       return;
     }
 
+    // Coleta coordenadas de todos os móveis sólidos (bloqueados)
+    const solidFurnitureTiles = new Set<string>();
+    if (this.mapData.furniture) {
+      this.mapData.furniture.forEach((f: any) => {
+        const type = f.type || '';
+        const isSeat = type.includes('SOFA') || type.includes('BENCH') || type.includes('CHAIR') || type.includes('CUSHION');
+        if (!isSeat) {
+          solidFurnitureTiles.add(`${f.col},${f.row}`);
+        }
+      });
+    }
+
     const TILE_SIZE = 16;
     const cols = this.mapData.cols;
     const rows = this.mapData.rows;
@@ -434,8 +446,28 @@ export class TileMapRenderer {
           
           if (shouldPet) {
             const chosenPet = petList[Math.floor(Math.random() * petList.length)];
-            pos.targetCol = chosenPet.col;
-            pos.targetRow = chosenPet.row;
+            // Encontra um tile adjacente válido ao pet
+            const adjacents = [
+              { c: chosenPet.col - 1, r: chosenPet.row },
+              { c: chosenPet.col + 1, r: chosenPet.row },
+              { c: chosenPet.col, r: chosenPet.row - 1 },
+              { c: chosenPet.col, r: chosenPet.row + 1 }
+            ].filter(adj => {
+              if (adj.c < 0 || adj.c >= cols || adj.r < 0 || adj.r >= rows) return false;
+              const tileIdx = adj.r * cols + adj.c;
+              const tileType = tiles[tileIdx];
+              return (tileType === 0 || tileType === 7 || tileType === 1 || tileType === 9) && !solidFurnitureTiles.has(`${adj.c},${adj.r}`);
+            });
+            
+            if (adjacents.length > 0) {
+              const bestAdj = adjacents[Math.floor(Math.random() * adjacents.length)];
+              pos.targetCol = bestAdj.c;
+              pos.targetRow = bestAdj.r;
+            } else {
+              pos.targetCol = chosenPet.col;
+              pos.targetRow = chosenPet.row;
+            }
+
             pos.targetDir = 0;
             pos.targetMirror = false;
             pos.isRestingAtSofa = false;
@@ -459,7 +491,9 @@ export class TileMapRenderer {
                 for (let c = 0; c < cols; c++) {
                   const t = tiles[r * cols + c];
                   if (t === 0 || t === 7 || t === 1 || t === 9) {
-                    walkable.push({c, r});
+                    if (!solidFurnitureTiles.has(`${c},${r}`)) {
+                      walkable.push({c, r});
+                    }
                   }
                 }
               }
@@ -703,7 +737,9 @@ export class TileMapRenderer {
       for (let c = 0; c < cols; c++) {
         const t = tiles[r * cols + c];
         if (t === 0 || t === 7 || t === 1 || t === 9) {
-          walkableForPets.push({ c, r });
+          if (!solidFurnitureTiles.has(`${c},${r}`)) {
+            walkableForPets.push({ c, r });
+          }
         }
       }
     }

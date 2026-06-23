@@ -130,7 +130,13 @@ export function OfficeCanvas() {
         const idx = row * cols + col;
         const tileType = state.mapData?.tiles?.[idx];
         if (tileType !== undefined && tileType !== 255) {
-          state.moveFurniture(draggingFurnitureId.current, col, row);
+          // Evita sobreposição de móveis na mesma coordenada
+          const isOccupied = (state.mapData.furniture || []).some((f: any) => 
+            f.uid !== draggingFurnitureId.current && f.col === col && f.row === row
+          );
+          if (!isOccupied) {
+            state.moveFurniture(draggingFurnitureId.current, col, row);
+          }
         }
       }
       return;
