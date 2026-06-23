@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+webview-ui/**
+node_modules/**
+src/**
+.gitignore
+.yarnrc
+.eslintrc.json
+.prettierrc.json
+tsconfig.json
+**/*.map
+**/*.ts
