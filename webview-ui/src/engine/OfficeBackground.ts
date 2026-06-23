@@ -229,28 +229,70 @@ export class TileMapRenderer {
         const isHacker = theme === 'hacker-basement';
         if (isHacker) {
           if (t === 0 || t === 7 || t === 1 || t === 9) {
-            ctx.fillStyle = '#27272a';
+            // Piso Hacker Cyberpunk (grade preta com borda neon verde brilhante)
+            ctx.fillStyle = '#050b07';
             ctx.fillRect(dx, dy, s, s);
-            ctx.strokeStyle = '#3f3f46';
-            ctx.lineWidth = 1 * zoom;
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+            ctx.lineWidth = 1;
             ctx.strokeRect(dx, dy, s, s);
             
-            // Parafusos metal grid
-            ctx.fillStyle = '#52525b';
+            // Detalhe de placa metálica
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.6)';
             ctx.fillRect(dx + 2 * zoom, dy + 2 * zoom, 1 * zoom, 1 * zoom);
-            ctx.fillRect(dx + s - 3 * zoom, dy + 2 * zoom, 1 * zoom, 1 * zoom);
-            ctx.fillRect(dx + 2 * zoom, dy + s - 3 * zoom, 1 * zoom, 1 * zoom);
             ctx.fillRect(dx + s - 3 * zoom, dy + s - 3 * zoom, 1 * zoom, 1 * zoom);
           } else {
-             this.drawSprite(ctx, 'wall_base', dx, dy, zoom);
+            // Parede Hacker (Preta com neon verde brilhante no topo)
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(dx, dy, s, s);
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(dx, dy);
+            ctx.lineTo(dx + s, dy);
+            ctx.stroke();
           }
         } else {
-          if (t === 0) {
-            this.drawSprite(ctx, 'floor_0', dx, dy, zoom);
-          } else if (t === 7 || t === 1 || t === 9) {
-            this.drawSprite(ctx, 'floor_1', dx, dy, zoom);
+          if (t === 7) {
+            // Chão de Madeira/Bege Vivo
+            ctx.fillStyle = '#ebd5b3';
+            ctx.fillRect(dx, dy, s, s);
+            ctx.strokeStyle = '#cda87b';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(dx, dy, s, s);
+          } else if (t === 1) {
+            // Carpete Azul Vivo
+            ctx.fillStyle = '#3182ce';
+            ctx.fillRect(dx, dy, s, s);
+            ctx.strokeStyle = '#2b6cb0';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(dx, dy, s, s);
+          } else if (t === 9) {
+            // Tabuleiro de Xadrez (Preto e Branco)
+            const isWhite = (r + c) % 2 === 0;
+            ctx.fillStyle = isWhite ? '#f7fafc' : '#2d3748';
+            ctx.fillRect(dx, dy, s, s);
+            ctx.strokeStyle = isWhite ? '#cbd5e1' : '#1a202c';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(dx, dy, s, s);
+          } else if (t === 0) {
+            // Corredor (Cinza Escuro com linhas)
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(dx, dy, s, s);
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(dx, dy, s, s);
           } else {
-            this.drawSprite(ctx, 'wall_base', dx, dy, zoom);
+            // Parede escura (Delineando as salas)
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(dx, dy, s, s);
+            
+            // Bordas superiores brilhantes para dar profundidade
+            ctx.strokeStyle = '#4b5563';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(dx, dy);
+            ctx.lineTo(dx + s, dy);
+            ctx.stroke();
           }
         }
       }
