@@ -33,6 +33,26 @@ export interface Agent {
   } | null;
 }
 
+export interface LevelInfo {
+  level: number;
+  title: string;
+  accessory: 'none' | 'glasses' | 'headphones' | 'crown';
+  color: string;
+}
+
+export function getAgentLevelInfo(toolCallCount: number, locale: 'pt-BR' | 'en' = 'pt-BR'): LevelInfo {
+  const isEn = locale === 'en';
+  if (toolCallCount >= 60) {
+    return { level: 4, title: 'Tech Lead', accessory: 'crown', color: '#f43f5e' }; // rose
+  } else if (toolCallCount >= 30) {
+    return { level: 3, title: isEn ? 'Senior' : 'Sênior', accessory: 'glasses', color: '#a855f7' }; // purple
+  } else if (toolCallCount >= 10) {
+    return { level: 2, title: isEn ? 'Mid-level' : 'Pleno', accessory: 'headphones', color: '#3b82f6' }; // blue
+  } else {
+    return { level: 1, title: isEn ? 'Junior' : 'Estagiário', accessory: 'none', color: '#a1a1aa' }; // gray
+  }
+}
+
 export interface Desk {
   id: number;
   x: number;

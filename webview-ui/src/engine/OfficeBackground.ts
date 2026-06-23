@@ -1,4 +1,4 @@
-import { Agent } from '../types';
+import { Agent, getAgentLevelInfo } from '../types';
 
 export class TileMapRenderer {
   public mapData: any = null;
@@ -349,6 +349,60 @@ export class TileMapRenderer {
         zY: pos.y + 32 * zoom, // Ajusta Z-Index baseado nos pés do boneco
         draw: () => {
           this.drawCharacterSprite(ctx, `char_${agent.characterIndex % 6}`, actionCol, pos.dir, pos.x, pos.y, zoom, pos.mirror);
+
+          // DRAW ACCESSORY BASED ON LEVEL
+          const levelInfo = getAgentLevelInfo(agent.toolCallCount || 0);
+          
+          if (levelInfo.accessory === 'glasses') {
+            if (pos.dir === 0) { // Looking Down
+              ctx.save();
+              ctx.fillStyle = '#09090b';
+              ctx.fillRect(pos.x + 4 * zoom, pos.y + 11 * zoom, 3 * zoom, 2 * zoom);
+              ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom, 3 * zoom, 2 * zoom);
+              ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom, 2 * zoom, 1 * zoom);
+              ctx.restore();
+            } else if (pos.dir === 2) { // Looking Side
+              ctx.save();
+              ctx.fillStyle = '#09090b';
+              if (!pos.mirror) { // Facing Right
+                ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom, 4 * zoom, 2 * zoom);
+                ctx.fillRect(pos.x + 5 * zoom, pos.y + 11 * zoom, 4 * zoom, 1 * zoom); // temple
+              } else { // Facing Left
+                ctx.fillRect(pos.x + 3 * zoom, pos.y + 11 * zoom, 4 * zoom, 2 * zoom);
+                ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom, 4 * zoom, 1 * zoom); // temple
+              }
+              ctx.restore();
+            }
+          } else if (levelInfo.accessory === 'headphones') {
+            ctx.save();
+            ctx.fillStyle = '#2563eb'; // blue
+            if (pos.dir === 0 || pos.dir === 1) { // Down or Up
+              ctx.fillRect(pos.x + 1 * zoom, pos.y + 8 * zoom, 2 * zoom, 4 * zoom); // left ear
+              ctx.fillRect(pos.x + 13 * zoom, pos.y + 8 * zoom, 2 * zoom, 4 * zoom); // right ear
+              ctx.fillRect(pos.x + 2 * zoom, pos.y + 5 * zoom, 12 * zoom, 1.5 * zoom); // top band
+            } else if (pos.dir === 2) { // Side
+              ctx.fillRect(pos.x + 6.5 * zoom, pos.y + 8 * zoom, 3 * zoom, 4 * zoom);
+              ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 5 * zoom, 1 * zoom, 3 * zoom);
+            }
+            ctx.restore();
+          } else if (levelInfo.accessory === 'crown') {
+            ctx.save();
+            ctx.fillStyle = '#d97706'; // gold
+            ctx.beginPath();
+            // Crown base
+            ctx.fillRect(pos.x + 4 * zoom, pos.y + 2 * zoom, 8 * zoom, 1.5 * zoom);
+            // Left peak
+            ctx.fillRect(pos.x + 4 * zoom, pos.y, 1.5 * zoom, 2 * zoom);
+            // Middle peak
+            ctx.fillRect(pos.x + 7 * zoom, pos.y, 2 * zoom, 2 * zoom);
+            // Right peak
+            ctx.fillRect(pos.x + 10.5 * zoom, pos.y, 1.5 * zoom, 2 * zoom);
+            
+            // Jewel
+            ctx.fillStyle = '#ef4444'; // ruby red
+            ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 1 * zoom, 1 * zoom, 1 * zoom);
+            ctx.restore();
+          }
           
           // PROP: Café se estiver no sofá e idle
           if (!isWalking && !isWorking && pos.isRestingAtSofa) {

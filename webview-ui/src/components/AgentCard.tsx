@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Agent } from '../types';
+import { Agent, getAgentLevelInfo } from '../types';
 import { useOfficeStore } from '../store/officeStore';
 import { i18n } from '../i18n';
 import { CHARACTER_PALETTES } from '../engine/CharacterSprites';
@@ -88,9 +88,20 @@ export function AgentCard({ agent }: { agent: Agent }) {
         </div>
 
         <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-            <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e4e4e7' }}>{agent.name}</strong>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusColor, boxShadow: `0 0 8px ${statusColor}` }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexGrow: 1 }}>
+              <strong style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e4e4e7' }}>{agent.name}</strong>
+              <span style={{ 
+                fontSize: '0.65em', padding: '1px 5px', borderRadius: '4px', 
+                backgroundColor: `${getAgentLevelInfo(agent.toolCallCount || 0, locale).color}22`, 
+                color: getAgentLevelInfo(agent.toolCallCount || 0, locale).color, 
+                border: `1px solid ${getAgentLevelInfo(agent.toolCallCount || 0, locale).color}44`, 
+                fontWeight: 'bold', whiteSpace: 'nowrap'
+              }}>
+                {getAgentLevelInfo(agent.toolCallCount || 0, locale).title}
+              </span>
+            </div>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: statusColor, boxShadow: `0 0 8px ${statusColor}`, flexShrink: 0 }} />
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85em' }}>
