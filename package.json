@@ -44,6 +44,10 @@
       {
         "command": "pixelcrew.resetLayout",
         "title": "PixelCrew: Resetar Layout"
+      },
+      {
+        "command": "pixelcrew.triggerParty",
+        "title": "PixelCrew: Testar Festa (Git Commit)"
       }
     ],
     "configuration": {

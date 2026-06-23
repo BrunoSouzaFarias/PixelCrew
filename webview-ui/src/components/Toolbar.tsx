@@ -4,7 +4,7 @@ import { i18n } from '../i18n';
 import { vscode } from '../vscodeApi';
 
 export function Toolbar() {
-  const { zoom, setZoom, locale, setLocale, showSupervisorPanel, toggleSupervisorPanel, agents, theme, setTheme } = useOfficeStore();
+  const { zoom, setZoom, locale, setLocale, showSupervisorPanel, toggleSupervisorPanel, agents, theme, setTheme, isDecorationMode, setDecorationMode } = useOfficeStore();
   const t = i18n[locale];
   const activeCount = Object.values(agents).length;
 
@@ -64,6 +64,25 @@ export function Toolbar() {
         <option value="default-layout-1">Default Layout</option>
         <option value="hacker-basement">Hacker Basement</option>
       </select>
+
+      <button 
+        onClick={() => setDecorationMode(!isDecorationMode)}
+        style={{
+          background: isDecorationMode ? '#2563eb' : '#18181b',
+          border: '1px solid #27272a',
+          color: isDecorationMode ? '#ffffff' : '#a1a1aa',
+          padding: '4px 12px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontWeight: 'bold',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+      >
+        🛠️ {locale === 'pt-BR' ? 'Decoração' : 'Decorate'}
+      </button>
 
       <div style={{ flexGrow: 1 }} />
 

@@ -19,6 +19,19 @@ export function activate(context: vscode.ExtensionContext) {
     adapter.start(workspacePath);
   });
 
+  // Watcher para mudanças no Git (Commit/Push)
+  const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/logs/HEAD');
+  gitWatcher.onDidChange(() => {
+    if (PixelCrewPanel.currentPanel) {
+      PixelCrewPanel.currentPanel.triggerPartyMode();
+    }
+  });
+  gitWatcher.onDidCreate(() => {
+    if (PixelCrewPanel.currentPanel) {
+      PixelCrewPanel.currentPanel.triggerPartyMode();
+    }
+  });
+
   let openOfficeCmd = vscode.commands.registerCommand('pixelcrew.openOffice', () => {
     PixelCrewPanel.createOrShow(context.extensionUri, context);
   });
@@ -67,7 +80,16 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showInformationMessage('Reset Layout: Not implemented yet');
   });
 
-  context.subscriptions.push(openOfficeCmd, spawnAgentCmd, toggleLocaleCmd, resetLayoutCmd);
+  let triggerPartyCmd = vscode.commands.registerCommand('pixelcrew.triggerParty', () => {
+    if (PixelCrewPanel.currentPanel) {
+      PixelCrewPanel.currentPanel.triggerPartyMode();
+      vscode.window.showInformationMessage('Festa de Git Commit iniciada! 🎉');
+    } else {
+      vscode.window.showWarningMessage('Abra o PixelCrew Office primeiro para iniciar a festa!');
+    }
+  });
+
+  context.subscriptions.push(openOfficeCmd, spawnAgentCmd, toggleLocaleCmd, resetLayoutCmd, triggerPartyCmd, gitWatcher);
 }
 
 export function deactivate() {}

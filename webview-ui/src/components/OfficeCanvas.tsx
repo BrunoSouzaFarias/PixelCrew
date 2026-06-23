@@ -1,14 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useOfficeStore } from '../store/officeStore';
 import { GameLoop } from '../engine/GameLoop';
 import { Renderer } from '../engine/Renderer';
 import { vscode } from '../vscodeApi';
+import { SpeechBubbleModal } from './SpeechBubbleModal';
+import { DecorationPanel } from './DecorationPanel';
 
 export function OfficeCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<Renderer | null>(null);
   
-  const { agents, desks, zoom, offsetX } = useOfficeStore();
+  const { agents, desks, zoom, offsetX, isDecorationMode } = useOfficeStore();
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -26,6 +30,7 @@ export function OfficeCanvas() {
 
     const gameLoop = new GameLoop();
     const renderer = new Renderer();
+    rendererRef.current = renderer;
     let currentTheme = 'default-layout-1';
 
     gameLoop.start(() => {
@@ -48,30 +53,139 @@ export function OfficeCanvas() {
       resizeObserver.disconnect();
       gameLoop.stop();
     };
-  }, []); // Intentionally empty dependency array, loop reads from getState()
+  }, []);
 
   const isDragging = useRef(false);
   const lastPan = useRef({ x: 0, y: 0 });
+  const pointerDownPos = useRef({ x: 0, y: 0 });
+  const draggingFurnitureId = useRef<string | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    isDragging.current = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    pointerDownPos.current = { x: e.clientX, y: e.clientY };
     lastPan.current = { x: e.clientX, y: e.clientY };
+
+    const state = useOfficeStore.getState();
+
+    if (state.isDecorationMode) {
+      // Verifica se clicou em algum móvel para arrastar
+      const clickedFurnId = rendererRef.current?.tileMapRenderer.getFurnitureAtCoordinates(
+        canvas.width,
+        canvas.height,
+        state.zoom,
+        mouseX,
+        mouseY,
+        state.panX,
+        state.panY
+      );
+
+      if (clickedFurnId) {
+        state.setSelectedFurnitureId(clickedFurnId);
+        draggingFurnitureId.current = clickedFurnId;
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        isDragging.current = false;
+        return;
+      } else {
+        state.setSelectedFurnitureId(null);
+      }
+    }
+
+    // Comportamento normal de pan (arrastar a tela)
+    isDragging.current = true;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const state = useOfficeStore.getState();
+
+    if (state.isDecorationMode && draggingFurnitureId.current) {
+      // Arrastar móvel no grid
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const TILE_SIZE = 16;
+      const s = TILE_SIZE * state.zoom;
+      const cols = state.mapData?.cols || 21;
+      const rows = state.mapData?.rows || 22;
+      const mapW = cols * s;
+      const mapH = rows * s;
+      const offsetX = Math.floor((canvas.width - mapW) / 2 + state.panX);
+      const offsetY = Math.floor((canvas.height - mapH) / 2 + state.panY);
+
+      const col = Math.floor((mouseX - offsetX) / s);
+      const row = Math.floor((mouseY - offsetY) / s);
+
+      if (col >= 0 && col < cols && row >= 0 && row < rows) {
+        // Checa se o tile é chão válido
+        const idx = row * cols + col;
+        const tileType = state.mapData?.tiles?.[idx];
+        if (tileType !== undefined && tileType !== 255) {
+          state.moveFurniture(draggingFurnitureId.current, col, row);
+        }
+      }
+      return;
+    }
+
     if (!isDragging.current) return;
     const dx = e.clientX - lastPan.current.x;
     const dy = e.clientY - lastPan.current.y;
     lastPan.current = { x: e.clientX, y: e.clientY };
     
-    const state = useOfficeStore.getState();
     state.setPan(state.panX + dx, state.panY + dy);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (draggingFurnitureId.current) {
+      draggingFurnitureId.current = null;
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      return;
+    }
+
     isDragging.current = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+
+    // Verifica se foi um clique rápido
+    const dx = e.clientX - pointerDownPos.current.x;
+    const dy = e.clientY - pointerDownPos.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 5) {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const state = useOfficeStore.getState();
+
+      // Detecção de clique em agentes
+      const clickedAgentId = rendererRef.current?.tileMapRenderer.getAgentAtCoordinates(
+        canvas.width,
+        canvas.height,
+        state.zoom,
+        mouseX,
+        mouseY,
+        state.panX,
+        state.panY
+      );
+
+      if (clickedAgentId) {
+        setSelectedAgentId(clickedAgentId);
+      } else {
+        // Se clicar no chão/vazio, fecha modal de falas
+        setSelectedAgentId(null);
+      }
+    }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -84,13 +198,30 @@ export function OfficeCanvas() {
     <div ref={containerRef} style={{ width: '100%', height: 'calc(100vh - 40px)', backgroundColor: '#09090b', position: 'relative' }}>
       <canvas 
         ref={canvasRef} 
-        style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none', cursor: isDragging.current ? 'grabbing' : 'grab' }} 
+        style={{ 
+          display: 'block', 
+          width: '100%', 
+          height: '100%', 
+          touchAction: 'none', 
+          cursor: isDecorationMode ? 'cell' : (isDragging.current ? 'grabbing' : 'grab') 
+        }} 
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onWheel={handleWheel}
       />
+
+      {/* Popovers e Painéis Interativos */}
+      {selectedAgentId && (
+        <SpeechBubbleModal 
+          agentId={selectedAgentId} 
+          onClose={() => setSelectedAgentId(null)} 
+        />
+      )}
+
+      <DecorationPanel />
+
       {Object.values(agents).length === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{ 

@@ -31,6 +31,14 @@ function App() {
         case 'AGENT_REMOVED':
           useOfficeStore.getState().removeAgent(message.agentId);
           break;
+        case 'PARTY_MODE': {
+          const store = useOfficeStore.getState();
+          store.setPartyMode(true);
+          setTimeout(() => {
+            useOfficeStore.getState().setPartyMode(false);
+          }, 10000); // 10 segundos de festa!
+          break;
+        }
       }
     };
 

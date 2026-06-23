@@ -1,4 +1,5 @@
 import { Agent, getAgentLevelInfo } from '../types';
+import { useOfficeStore } from '../store/officeStore';
 
 export class TileMapRenderer {
   public mapData: any = null;
@@ -7,7 +8,7 @@ export class TileMapRenderer {
   private frameCounter = 0;
 
   // Local state for 2D visual interpolation
-  private agentPos = new Map<string, { x: number, y: number, dir: number, mirror: boolean }>();
+  private agentPos = new Map<string, { x: number, y: number, dir: number, mirror: boolean, idleFrames?: number, targetCol?: number, targetRow?: number, targetDir?: number, targetMirror?: boolean, isRestingAtSofa?: boolean }>();
 
   constructor() {
     this.init();
@@ -15,8 +16,19 @@ export class TileMapRenderer {
 
   public async loadMap(mapFilename: string = 'default-layout-1.json') {
     try {
+      const state = useOfficeStore.getState();
       const response = await fetch(`game_assets/${mapFilename}`);
-      this.mapData = await response.json();
+      const mapJson = await response.json();
+      
+      // Se já temos layouts customizados persistidos no VS Code backend, aplica-os
+      const currentTheme = mapFilename.replace('.json', '');
+      const customLayout = state.customLayouts?.[currentTheme];
+      if (customLayout) {
+        mapJson.furniture = customLayout;
+      }
+      
+      useOfficeStore.setState({ mapData: mapJson });
+      this.mapData = mapJson;
       this.loaded = true;
     } catch (e) {
       console.error('Failed to load map data:', e);
@@ -100,15 +112,97 @@ export class TileMapRenderer {
     ctx.restore();
   }
 
-  public draw(ctx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, zoom: number, agents: Agent[], theme: string = 'dark', panX: number = 0, panY: number = 0) {
+  private drawPet(ctx: CanvasRenderingContext2D, pet: any, zoom: number) {
+    ctx.save();
+    
+    const px = pet.x;
+    const py = pet.y;
+    
+    // Gira se espelhado
+    if (pet.mirror) {
+      ctx.translate(px + 12 * zoom, py);
+      ctx.scale(-1, 1);
+    } else {
+      ctx.translate(px, py);
+    }
+    
+    if (pet.type === 'cat') {
+      // Gato Laranja 🐱
+      ctx.fillStyle = '#f97316';
+      // Corpo
+      ctx.fillRect(2 * zoom, 8 * zoom, 8 * zoom, 5 * zoom);
+      // Cabeça
+      ctx.fillRect(6 * zoom, 4 * zoom, 5 * zoom, 5 * zoom);
+      // Orelhas
+      ctx.fillRect(6 * zoom, 2 * zoom, 1 * zoom, 2 * zoom);
+      ctx.fillRect(10 * zoom, 2 * zoom, 1 * zoom, 2 * zoom);
+      // Rabo
+      ctx.fillRect(0 * zoom, 5 * zoom, 2 * zoom, 4 * zoom);
+      // Olhos (verdes)
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(9 * zoom, 5 * zoom, 1 * zoom, 1 * zoom);
+      // Patas
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(3 * zoom, 13 * zoom, 1 * zoom, 1 * zoom);
+      ctx.fillRect(5 * zoom, 13 * zoom, 1 * zoom, 1 * zoom);
+      ctx.fillRect(7 * zoom, 13 * zoom, 1 * zoom, 1 * zoom);
+      ctx.fillRect(9 * zoom, 13 * zoom, 1 * zoom, 1 * zoom);
+    } else {
+      // Cachorro Marrom 🐶
+      ctx.fillStyle = '#a16207';
+      // Corpo
+      ctx.fillRect(1 * zoom, 7 * zoom, 9 * zoom, 6 * zoom);
+      // Cabeça
+      ctx.fillRect(7 * zoom, 3 * zoom, 5 * zoom, 5 * zoom);
+      // Orelhas caídas
+      ctx.fillStyle = '#713f12';
+      ctx.fillRect(6 * zoom, 4 * zoom, 2 * zoom, 4 * zoom);
+      // Rabo
+      ctx.fillRect(0 * zoom, 5 * zoom, 1 * zoom, 3 * zoom);
+      // Olhos
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(10 * zoom, 4 * zoom, 1 * zoom, 1 * zoom);
+      // Patas
+      ctx.fillStyle = '#713f12';
+      ctx.fillRect(2 * zoom, 13 * zoom, 2 * zoom, 1 * zoom);
+      ctx.fillRect(7 * zoom, 13 * zoom, 2 * zoom, 1 * zoom);
+    }
+    
+    ctx.restore();
+    
+    // Nome do pet flutuando
+    ctx.save();
+    ctx.font = `bold ${5 * zoom}px sans-serif`;
+    ctx.fillStyle = '#cbd5e1';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'black';
+    ctx.shadowBlur = 2 * zoom;
+    ctx.fillText(pet.name, pet.x + 6 * zoom, pet.y - 2 * zoom);
+    ctx.restore();
+  }
+
+  public draw(
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number,
+    zoom: number,
+    agents: Agent[],
+    theme: string = 'dark',
+    panX: number = 0,
+    panY: number = 0
+  ) {
     this.frameCounter++;
+    
+    const state = useOfficeStore.getState();
+    this.mapData = state.mapData;
+
     if (!this.loaded || !this.mapData) {
-      ctx.fillStyle = '#09090b'; // escuro
+      ctx.fillStyle = '#09090b';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       return;
     }
 
-    const TILE_SIZE = 16; // CORRIGIDO PARA 16px!
+    const TILE_SIZE = 16;
     const cols = this.mapData.cols;
     const rows = this.mapData.rows;
     const s = TILE_SIZE * zoom;
@@ -118,14 +212,8 @@ export class TileMapRenderer {
     const offsetY = Math.floor((canvasHeight - mapH) / 2 + panY);
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Fundo base do canvas inteiro
     ctx.fillStyle = '#09090b';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    // Não preenchemos um retângulo gigante com #3A3A5C. 
-    // Isso deixará os blocos 255 totalmente transparentes (da cor do canvas #09090b),
-    // removendo a "área cinza" que sobra no topo.
 
     // Grid de Tiles
     const tiles = this.mapData.tiles;
@@ -133,26 +221,21 @@ export class TileMapRenderer {
       for (let c = 0; c < cols; c++) {
         const idx = r * cols + c;
         const t = tiles[idx];
-        if (t === 255) {
-          // ctx.fillStyle = 'rgba(255,255,255,0.02)';
-          // ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s);
-          continue;
-        }
+        if (t === 255) continue;
         
         const dx = offsetX + c * s;
         const dy = offsetY + r * s;
         
         const isHacker = theme === 'hacker-basement';
         if (isHacker) {
-          // Custom Hacker Floor (Metal Grid)
           if (t === 0 || t === 7 || t === 1 || t === 9) {
-            ctx.fillStyle = '#27272a'; // Base mais clara (antes #18181b)
+            ctx.fillStyle = '#27272a';
             ctx.fillRect(dx, dy, s, s);
-            ctx.strokeStyle = '#3f3f46'; // Linha de grade mais clara
+            ctx.strokeStyle = '#3f3f46';
             ctx.lineWidth = 1 * zoom;
             ctx.strokeRect(dx, dy, s, s);
             
-            // Adiciona um detalhe de junção nas pontas (parafusos)
+            // Parafusos metal grid
             ctx.fillStyle = '#52525b';
             ctx.fillRect(dx + 2 * zoom, dy + 2 * zoom, 1 * zoom, 1 * zoom);
             ctx.fillRect(dx + s - 3 * zoom, dy + 2 * zoom, 1 * zoom, 1 * zoom);
@@ -162,18 +245,37 @@ export class TileMapRenderer {
              this.drawSprite(ctx, 'wall_base', dx, dy, zoom);
           }
         } else {
-          if (t === 0) { // FLOOR 0
+          if (t === 0) {
             this.drawSprite(ctx, 'floor_0', dx, dy, zoom);
-          } else if (t === 7 || t === 1 || t === 9) { // CARPETS AND OTHER FLOORS
+          } else if (t === 7 || t === 1 || t === 9) {
             this.drawSprite(ctx, 'floor_1', dx, dy, zoom);
-          } else { // WALL BASE
+          } else {
             this.drawSprite(ctx, 'wall_base', dx, dy, zoom);
           }
         }
       }
     }
 
-    // Array for Z-sorting (drawables)
+    // Desenhar Grid de Linhas no Modo Decoração
+    if (state.isDecorationMode) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+      ctx.lineWidth = 1;
+      for (let r = 0; r <= rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX, offsetY + r * s);
+        ctx.lineTo(offsetX + cols * s, offsetY + r * s);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= cols; c++) {
+        ctx.beginPath();
+        ctx.moveTo(offsetX + c * s, offsetY);
+        ctx.lineTo(offsetX + c * s, offsetY + rows * s);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     interface ZDrawable {
       zY: number;
       draw: () => void;
@@ -185,7 +287,7 @@ export class TileMapRenderer {
       for (const f of this.mapData.furniture) {
         const dx = offsetX + f.col * s;
         const dy = offsetY + f.row * s;
-        const zY = f.row * s; // simplificação de z-sort
+        const zY = f.row * s;
         
         let imgKey = null;
         let mirror = false;
@@ -208,53 +310,70 @@ export class TileMapRenderer {
         if (imgKey) {
           drawables.push({
             zY: zY,
-            draw: () => this.drawSprite(ctx, imgKey, dx, dy, zoom, mirror)
+            draw: () => {
+              this.drawSprite(ctx, imgKey, dx, dy, zoom, mirror);
+              
+              // Se selecionado na decoração, desenha contorno neon brilhante
+              if (state.isDecorationMode && state.selectedFurnitureId === f.uid) {
+                ctx.save();
+                ctx.strokeStyle = '#3b82f6';
+                ctx.shadowColor = '#3b82f6';
+                ctx.shadowBlur = 10 * zoom;
+                ctx.lineWidth = 2 * zoom;
+                ctx.strokeRect(dx - 1, dy - 1, s + 2, s + 2);
+                ctx.restore();
+              }
+            }
           });
         }
       }
     }
 
-    // Characters
-    // Mapear cadeiras de trabalho (PCs)
+    // Assentos de PCs
     const workSeats: {col: number, row: number, dir: number, mirror: boolean}[] = [];
     if (this.mapData.furniture) {
       this.mapData.furniture.forEach((f: any) => {
-        if (f.type.includes('PC_FRONT')) workSeats.push({ col: f.col, row: f.row + 1, dir: 1, mirror: false }); // Frente pro PC (senta embaixo virado pra cima)
-        if (f.type === 'PC_SIDE') workSeats.push({ col: f.col - 1, row: f.row, dir: 2, mirror: false }); // PC na direita, senta na esquerda virado pra direita
-        if (f.type === 'PC_SIDE:left') workSeats.push({ col: f.col + 1, row: f.row, dir: 2, mirror: true }); // PC na esquerda, senta na direita virado pra esquerda
+        if (f.type.includes('PC_FRONT')) workSeats.push({ col: f.col, row: f.row + 1, dir: 1, mirror: false });
+        if (f.type === 'PC_SIDE') workSeats.push({ col: f.col - 1, row: f.row, dir: 2, mirror: false });
+        if (f.type === 'PC_SIDE:left') workSeats.push({ col: f.col + 1, row: f.row, dir: 2, mirror: true });
       });
     }
 
-    // Mapear assentos de descanso (Sofás e Bancos)
+    // Assentos de Sofás
     const restSeats: {col: number, row: number, dir: number, mirror: boolean}[] = [];
     if (this.mapData.furniture) {
       this.mapData.furniture.forEach((f: any) => {
-        if (f.type === 'SOFA_FRONT' || f.type.includes('BENCH')) restSeats.push({ col: f.col, row: f.row, dir: 0, mirror: false }); // Virado pra baixo
-        if (f.type === 'SOFA_BACK') restSeats.push({ col: f.col, row: f.row, dir: 1, mirror: false }); // Virado pra cima
-        if (f.type === 'SOFA_SIDE') restSeats.push({ col: f.col, row: f.row, dir: 2, mirror: false }); // Virado pra direita
-        if (f.type === 'SOFA_SIDE:left') restSeats.push({ col: f.col, row: f.row, dir: 2, mirror: true }); // Virado pra esquerda
+        if (f.type === 'SOFA_FRONT' || f.type.includes('BENCH')) restSeats.push({ col: f.col, row: f.row, dir: 0, mirror: false });
+        if (f.type === 'SOFA_BACK') restSeats.push({ col: f.col, row: f.row, dir: 1, mirror: false });
+        if (f.type === 'SOFA_SIDE') restSeats.push({ col: f.col, row: f.row, dir: 2, mirror: false });
+        if (f.type === 'SOFA_SIDE:left') restSeats.push({ col: f.col, row: f.row, dir: 2, mirror: true });
       });
     }
 
-    // Se não encontrou nenhum no mapa, adiciona um default
     if (workSeats.length === 0) workSeats.push({ col: 14, row: 13, dir: 1, mirror: false });
     if (restSeats.length === 0) restSeats.push({ col: 14, row: 13, dir: 0, mirror: false });
 
-    // Filtrar apenas os agentes que estão trabalhando
     let workingIdx = 0;
 
+    // Lógica e Desenho dos Agentes
     agents.forEach((agent, i) => {
       let targetSeat;
       const isWorking = agent.status === 'typing' || agent.status === 'reading' || agent.status === 'thinking';
       
       let pos = this.agentPos.get(agent.id);
       if (!pos) {
-        // Inicializa no meio
         pos = { x: offsetX + 14 * s, y: offsetY + 13 * s, dir: 0, mirror: false, idleFrames: 0, targetCol: 14, targetRow: 13, isRestingAtSofa: false };
         this.agentPos.set(agent.id, pos);
       }
 
-      if (isWorking) {
+      if (state.isPartyMode) {
+        // Na festa de Commit, todos os agentes vão para a área central da sala
+        pos.targetCol = 14 + (i % 3) - 1;
+        pos.targetRow = 15 + Math.floor(i / 3);
+        pos.targetDir = 0;
+        pos.targetMirror = false;
+        pos.isRestingAtSofa = false;
+      } else if (isWorking) {
         targetSeat = workSeats[workingIdx % workSeats.length];
         workingIdx++;
         pos.targetCol = targetSeat.col;
@@ -263,51 +382,64 @@ export class TileMapRenderer {
         pos.targetMirror = targetSeat.mirror;
         pos.isRestingAtSofa = false;
       } else {
-        // State Machine para WANDERING
+        // Movimentação Wandering / Interação com Pet
         if (pos.idleFrames && pos.idleFrames > 0) {
           pos.idleFrames--;
         } else {
-          // Decidir novo alvo!
-          // 40% de chance de ir pro sofá, 60% de chance de andar aleatoriamente pelo chão
-          const isGoingToSofa = Math.random() < 0.4;
+          // 20% de chance de ir brincar com o pet se houver pets
+          const petList = Object.values(state.pets);
+          const shouldPet = Math.random() < 0.2 && petList.length > 0;
           
-          if (isGoingToSofa && restSeats.length > 0) {
-            const seat = restSeats[Math.floor(Math.random() * restSeats.length)];
-            pos.targetCol = seat.col;
-            pos.targetRow = seat.row;
-            pos.targetDir = seat.dir;
-            pos.targetMirror = seat.mirror;
-            pos.isRestingAtSofa = true;
-            pos.idleFrames = 300 + Math.random() * 300; // Senta por 5 a 10 segundos (a 60fps)
+          if (shouldPet) {
+            const chosenPet = petList[Math.floor(Math.random() * petList.length)];
+            pos.targetCol = chosenPet.col;
+            pos.targetRow = chosenPet.row;
+            pos.targetDir = 0;
+            pos.targetMirror = false;
+            pos.isRestingAtSofa = false;
+            pos.idleFrames = 180 + Math.random() * 180; // Fica perto do pet por 3 a 6 segs
+            
+            // Fala carinhosa
+            state.sendAgentSpeech(agent.id, `Fazendo carinho em ${chosenPet.name.split(' ')[0]}... ❤️`, 'done');
           } else {
-            // Acha todos os tiles de chão válidos
-            const walkable: {c: number, r: number}[] = [];
-            for (let r = 0; r < rows; r++) {
-              for (let c = 0; c < cols; c++) {
-                const t = tiles[r * cols + c];
-                if (t === 0 || t === 7 || t === 1 || t === 9) {
-                  walkable.push({c, r});
+            const isGoingToSofa = Math.random() < 0.4;
+            if (isGoingToSofa && restSeats.length > 0) {
+              const seat = restSeats[Math.floor(Math.random() * restSeats.length)];
+              pos.targetCol = seat.col;
+              pos.targetRow = seat.row;
+              pos.targetDir = seat.dir;
+              pos.targetMirror = seat.mirror;
+              pos.isRestingAtSofa = true;
+              pos.idleFrames = 300 + Math.random() * 300;
+            } else {
+              const walkable: {c: number, r: number}[] = [];
+              for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                  const t = tiles[r * cols + c];
+                  if (t === 0 || t === 7 || t === 1 || t === 9) {
+                    walkable.push({c, r});
+                  }
                 }
               }
-            }
-            if (walkable.length > 0) {
-              const dest = walkable[Math.floor(Math.random() * walkable.length)];
-              pos.targetCol = dest.c;
-              pos.targetRow = dest.r;
-              pos.targetDir = 0; // quando chegar, olha pra baixo
-              pos.targetMirror = false;
-              pos.isRestingAtSofa = false;
-              pos.idleFrames = 100 + Math.random() * 200; // Fica parado de 1.5 a 5 segundos
+              if (walkable.length > 0) {
+                const dest = walkable[Math.floor(Math.random() * walkable.length)];
+                pos.targetCol = dest.c;
+                pos.targetRow = dest.r;
+                pos.targetDir = 0;
+                pos.targetMirror = false;
+                pos.isRestingAtSofa = false;
+                pos.idleFrames = 100 + Math.random() * 200;
+              }
             }
           }
         }
       }
 
-      const tx = offsetX + (pos.targetCol ?? 14) * s; 
+      const tx = offsetX + (pos.targetCol ?? 14) * s;
       const ty = offsetY + (pos.targetRow ?? 13) * s - 16 * zoom;
 
-      // Visual Lerp
-      const speed = 0.8 * zoom; // Andar mais calmo
+      // Movimentação Lerp
+      const speed = 0.8 * zoom;
       const dx = tx - pos.x;
       const dy = ty - pos.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
@@ -318,12 +450,11 @@ export class TileMapRenderer {
         pos.x += (dx / dist) * speed;
         pos.y += (dy / dist) * speed;
         
-        // Face correct direction when walking
         if (Math.abs(dx) > Math.abs(dy)) {
-          pos.dir = 2; // Right/Left
+          pos.dir = 2;
           pos.mirror = dx < 0;
         } else {
-          pos.dir = dy > 0 ? 0 : 1; // Down / Up
+          pos.dir = dy > 0 ? 0 : 1;
           pos.mirror = false;
         }
       } else {
@@ -333,7 +464,18 @@ export class TileMapRenderer {
         if (pos.targetMirror !== undefined) pos.mirror = pos.targetMirror;
       }
 
-      let actionCol = 0; // default idle
+      // Salto no Party Mode
+      let bounceY = 0;
+      if (state.isPartyMode) {
+        bounceY = Math.abs(Math.sin(this.frameCounter * 0.15 + i)) * 6 * zoom;
+        // Spawna balões festivos
+        if (Math.random() < 0.005) {
+          const partyPhrases = ["Festa de Commit! 🎉", "Bora pro deploy! 🚀", "Uhul! 🥳", "Código rodando! 💃", "Sem bugs! 🕺"];
+          state.sendAgentSpeech(agent.id, partyPhrases[Math.floor(Math.random() * partyPhrases.length)], 'done');
+        }
+      }
+
+      let actionCol = 0;
       if (isWalking) {
         const walkCycle = [0, 1, 2, 1];
         const cycleIdx = Math.floor(this.frameCounter / 15) % walkCycle.length;
@@ -342,104 +484,95 @@ export class TileMapRenderer {
         actionCol = agent.status === 'reading' ? 5 : 3;
         if (Math.floor(this.frameCounter / 15) % 2 === 0) actionCol += 1;
       } else {
-        actionCol = 0; // Idle parado
+        actionCol = 0;
       }
 
       drawables.push({
-        zY: pos.y + 32 * zoom, // Ajusta Z-Index baseado nos pés do boneco
+        zY: pos.y + 32 * zoom,
         draw: () => {
-          this.drawCharacterSprite(ctx, `char_${agent.characterIndex % 6}`, actionCol, pos.dir, pos.x, pos.y, zoom, pos.mirror);
+          this.drawCharacterSprite(ctx, `char_${agent.characterIndex % 6}`, actionCol, pos.dir, pos.x, pos.y - bounceY, zoom, pos.mirror);
 
-          // DRAW ACCESSORY BASED ON LEVEL
+          // Acessórios baseados no nível
           const levelInfo = getAgentLevelInfo(agent.toolCallCount || 0);
+          const ayOffset = -bounceY;
           
           if (levelInfo.accessory === 'glasses') {
-            if (pos.dir === 0) { // Looking Down
+            if (pos.dir === 0) {
               ctx.save();
               ctx.fillStyle = '#09090b';
-              ctx.fillRect(pos.x + 4 * zoom, pos.y + 11 * zoom, 3 * zoom, 2 * zoom);
-              ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom, 3 * zoom, 2 * zoom);
-              ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom, 2 * zoom, 1 * zoom);
+              ctx.fillRect(pos.x + 4 * zoom, pos.y + 11 * zoom + ayOffset, 3 * zoom, 2 * zoom);
+              ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom + ayOffset, 3 * zoom, 2 * zoom);
+              ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom + ayOffset, 2 * zoom, 1 * zoom);
               ctx.restore();
-            } else if (pos.dir === 2) { // Looking Side
+            } else if (pos.dir === 2) {
               ctx.save();
               ctx.fillStyle = '#09090b';
-              if (!pos.mirror) { // Facing Right
-                ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom, 4 * zoom, 2 * zoom);
-                ctx.fillRect(pos.x + 5 * zoom, pos.y + 11 * zoom, 4 * zoom, 1 * zoom); // temple
-              } else { // Facing Left
-                ctx.fillRect(pos.x + 3 * zoom, pos.y + 11 * zoom, 4 * zoom, 2 * zoom);
-                ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom, 4 * zoom, 1 * zoom); // temple
+              if (!pos.mirror) {
+                ctx.fillRect(pos.x + 9 * zoom, pos.y + 11 * zoom + ayOffset, 4 * zoom, 2 * zoom);
+                ctx.fillRect(pos.x + 5 * zoom, pos.y + 11 * zoom + ayOffset, 4 * zoom, 1 * zoom);
+              } else {
+                ctx.fillRect(pos.x + 3 * zoom, pos.y + 11 * zoom + ayOffset, 4 * zoom, 2 * zoom);
+                ctx.fillRect(pos.x + 7 * zoom, pos.y + 11 * zoom + ayOffset, 4 * zoom, 1 * zoom);
               }
               ctx.restore();
             }
           } else if (levelInfo.accessory === 'headphones') {
             ctx.save();
-            ctx.fillStyle = '#2563eb'; // blue
-            if (pos.dir === 0 || pos.dir === 1) { // Down or Up
-              ctx.fillRect(pos.x + 1 * zoom, pos.y + 8 * zoom, 2 * zoom, 4 * zoom); // left ear
-              ctx.fillRect(pos.x + 13 * zoom, pos.y + 8 * zoom, 2 * zoom, 4 * zoom); // right ear
-              ctx.fillRect(pos.x + 2 * zoom, pos.y + 5 * zoom, 12 * zoom, 1.5 * zoom); // top band
-            } else if (pos.dir === 2) { // Side
-              ctx.fillRect(pos.x + 6.5 * zoom, pos.y + 8 * zoom, 3 * zoom, 4 * zoom);
-              ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 5 * zoom, 1 * zoom, 3 * zoom);
+            ctx.fillStyle = '#2563eb';
+            if (pos.dir === 0 || pos.dir === 1) {
+              ctx.fillRect(pos.x + 1 * zoom, pos.y + 8 * zoom + ayOffset, 2 * zoom, 4 * zoom);
+              ctx.fillRect(pos.x + 13 * zoom, pos.y + 8 * zoom + ayOffset, 2 * zoom, 4 * zoom);
+              ctx.fillRect(pos.x + 2 * zoom, pos.y + 5 * zoom + ayOffset, 12 * zoom, 1.5 * zoom);
+            } else if (pos.dir === 2) {
+              ctx.fillRect(pos.x + 6.5 * zoom, pos.y + 8 * zoom + ayOffset, 3 * zoom, 4 * zoom);
+              ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 5 * zoom + ayOffset, 1 * zoom, 3 * zoom);
             }
             ctx.restore();
           } else if (levelInfo.accessory === 'crown') {
             ctx.save();
-            ctx.fillStyle = '#d97706'; // gold
+            ctx.fillStyle = '#d97706';
             ctx.beginPath();
-            // Crown base
-            ctx.fillRect(pos.x + 4 * zoom, pos.y + 2 * zoom, 8 * zoom, 1.5 * zoom);
-            // Left peak
-            ctx.fillRect(pos.x + 4 * zoom, pos.y, 1.5 * zoom, 2 * zoom);
-            // Middle peak
-            ctx.fillRect(pos.x + 7 * zoom, pos.y, 2 * zoom, 2 * zoom);
-            // Right peak
-            ctx.fillRect(pos.x + 10.5 * zoom, pos.y, 1.5 * zoom, 2 * zoom);
-            
-            // Jewel
-            ctx.fillStyle = '#ef4444'; // ruby red
-            ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 1 * zoom, 1 * zoom, 1 * zoom);
+            ctx.fillRect(pos.x + 4 * zoom, pos.y + 2 * zoom + ayOffset, 8 * zoom, 1.5 * zoom);
+            ctx.fillRect(pos.x + 4 * zoom, pos.y + ayOffset, 1.5 * zoom, 2 * zoom);
+            ctx.fillRect(pos.x + 7 * zoom, pos.y + ayOffset, 2 * zoom, 2 * zoom);
+            ctx.fillRect(pos.x + 10.5 * zoom, pos.y + ayOffset, 1.5 * zoom, 2 * zoom);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(pos.x + 7.5 * zoom, pos.y + 1 * zoom + ayOffset, 1 * zoom, 1 * zoom);
             ctx.restore();
           }
           
-          // PROP: Café se estiver no sofá e idle
           if (!isWalking && !isWorking && pos.isRestingAtSofa) {
-            ctx.fillStyle = '#f5f5f4'; // caneca branca
-            // Desenha perto da mão do personagem
+            ctx.fillStyle = '#f5f5f4';
             const mugX = pos.x + 10 * zoom;
             const mugY = pos.y + 16 * zoom;
             ctx.fillRect(mugX, mugY, 3 * zoom, 4 * zoom);
-            ctx.fillStyle = '#78350f'; // café escuro dentro
+            ctx.fillStyle = '#78350f';
             ctx.fillRect(mugX + 0.5 * zoom, mugY, 2 * zoom, 1 * zoom);
           }
           
-          // EFEITO MATRIX: Chuva de código na tela do PC
           if (isWorking && pos.dir === 1 && !isWalking) {
-            // Desenhar partículas Matrix em cima da mesa do PC (acima do personagem)
             const pcScreenX = pos.x + 2 * zoom;
-            const pcScreenY = pos.y - 12 * zoom; // Posição aproximada do monitor
+            const pcScreenY = pos.y - 12 * zoom;
             
             ctx.save();
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(pcScreenX, pcScreenY, 12 * zoom, 8 * zoom);
             
-            ctx.fillStyle = '#22c55e'; // Verde Matrix
+            ctx.fillStyle = '#22c55e';
             ctx.font = `${4 * zoom}px monospace`;
             const numDrops = 3;
             for(let d = 0; d < numDrops; d++) {
               const dropY = ((this.frameCounter * (1 + d * 0.5)) % 10) * zoom;
               const dropX = d * 4 * zoom;
               if (dropY < 8 * zoom) {
-                 const char = String.fromCharCode(0x30A0 + Math.random() * 96); // Katakana aleatório
+                 const char = String.fromCharCode(0x30A0 + Math.random() * 96);
                  ctx.fillText(char, pcScreenX + dropX, pcScreenY + dropY);
               }
             }
             ctx.restore();
           }
 
-          // SPEECH BUBBLE
+          // Balão de fala
           let bubbleText: string | null = null;
           let bubbleType = 'info';
 
@@ -458,52 +591,46 @@ export class TileMapRenderer {
             const bubbleW = textWidth + padding * 2;
             const bubbleH = 14 * zoom;
             const bubbleX = pos.x + 8 * zoom - bubbleW / 2;
-            const bubbleY = pos.y - bubbleH - 4 * zoom; // Acima da cabeça
+            const bubbleY = pos.y - bubbleH - 4 * zoom + ayOffset;
 
-            // Sombra
             ctx.fillStyle = 'rgba(0,0,0,0.2)';
             ctx.beginPath();
             ctx.roundRect(bubbleX + 2, bubbleY + 2, bubbleW, bubbleH, 4 * zoom);
             ctx.fill();
 
-            // Cores baseadas no tipo de balão
             let bgColor = 'white';
             let textColor = '#18181b';
             let strokeColor = '#e4e4e7';
 
             if (bubbleType === 'thinking') {
-              bgColor = '#1e1b4b'; // dark blue/indigo
+              bgColor = '#1e1b4b';
               textColor = '#e0e7ff';
               strokeColor = '#312e81';
             } else if (bubbleType === 'warning') {
-              bgColor = '#7f1d1d'; // dark red
+              bgColor = '#7f1d1d';
               textColor = '#fee2e2';
               strokeColor = '#991b1b';
             } else if (bubbleType === 'done') {
-              bgColor = '#064e3b'; // dark green
+              bgColor = '#064e3b';
               textColor = '#d1fae5';
               strokeColor = '#065f46';
             }
 
-            // Fundo
             ctx.fillStyle = bgColor;
             ctx.beginPath();
             ctx.roundRect(bubbleX, bubbleY, bubbleW, bubbleH, 4 * zoom);
             ctx.fill();
             
-            // Triângulo apontando pro boneco
             ctx.beginPath();
             ctx.moveTo(bubbleX + bubbleW / 2 - 2 * zoom, bubbleY + bubbleH);
             ctx.lineTo(bubbleX + bubbleW / 2 + 2 * zoom, bubbleY + bubbleH);
             ctx.lineTo(bubbleX + bubbleW / 2, bubbleY + bubbleH + 3 * zoom);
             ctx.fill();
 
-            // Borda
             ctx.strokeStyle = strokeColor;
             ctx.lineWidth = 1 * zoom;
             ctx.stroke();
 
-            // Texto
             ctx.fillStyle = textColor;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -511,42 +638,120 @@ export class TileMapRenderer {
             ctx.restore();
           }
 
-          // NOME DO AGENTE (abaixo do personagem)
+          // Nome do agente
           ctx.save();
           ctx.font = `bold ${5 * zoom}px sans-serif`;
           ctx.fillStyle = '#f4f4f5';
-          ctx.strokeStyle = '#000000'; // <- adicionado
+          ctx.strokeStyle = '#000000';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
-          // Borda/Sombra no texto para garantir legibilidade
           ctx.shadowColor = 'black';
           ctx.shadowBlur = 3 * zoom;
           ctx.lineWidth = 2;
-          ctx.strokeText(agent.name, pos.x + 8 * zoom, pos.y + 34 * zoom);
-          ctx.fillText(agent.name, pos.x + 8 * zoom, pos.y + 34 * zoom);
+          ctx.strokeText(agent.name, pos.x + 8 * zoom, pos.y + 34 * zoom + ayOffset);
+          ctx.fillText(agent.name, pos.x + 8 * zoom, pos.y + 34 * zoom + ayOffset);
           ctx.restore();
         }
       });
     });
 
-    // Z-Sort and Render
+    // Atualização física e desenho dos Pets
+    const walkableForPets: {c: number, r: number}[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const t = tiles[r * cols + c];
+        if (t === 0 || t === 7 || t === 1 || t === 9) {
+          walkableForPets.push({ c, r });
+        }
+      }
+    }
+
+    const updatedPets = { ...state.pets };
+    let petsUpdated = false;
+
+    Object.values(updatedPets).forEach((pet) => {
+      if (pet.x === 0 && pet.y === 0) {
+        pet.x = offsetX + pet.col * s;
+        pet.y = offsetY + pet.row * s - 4 * zoom;
+        petsUpdated = true;
+      }
+
+      const tx = offsetX + pet.targetCol * s;
+      const ty = offsetY + pet.targetRow * s - 4 * zoom;
+
+      const speed = 0.5 * zoom; // pets andam um pouco mais devagar
+      const dx = tx - pet.x;
+      const dy = ty - pet.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > speed) {
+        pet.x += (dx / dist) * speed;
+        pet.y += (dy / dist) * speed;
+        pet.mirror = dx < 0;
+        petsUpdated = true;
+      } else {
+        pet.x = tx;
+        pet.y = ty;
+        pet.col = pet.targetCol;
+        pet.row = pet.targetRow;
+
+        // 1% de chance a cada frame de mudar o rumo
+        if (Math.random() < 0.01 && walkableForPets.length > 0) {
+          const next = walkableForPets[Math.floor(Math.random() * walkableForPets.length)];
+          pet.targetCol = next.c;
+          pet.targetRow = next.r;
+          petsUpdated = true;
+        }
+      }
+
+      // Adiciona o Pet aos drawables para Z-sorting
+      drawables.push({
+        zY: pet.y + 16 * zoom,
+        draw: () => this.drawPet(ctx, pet, zoom)
+      });
+    });
+
+    if (petsUpdated) {
+      useOfficeStore.setState({ pets: updatedPets });
+    }
+
+    // Z-Sort e Desenho Final
     drawables.sort((a, b) => a.zY - b.zY);
     for (const d of drawables) {
       d.draw();
     }
 
-    // Lighting System
-    if (theme === 'default-layout-1' || theme === 'light') {
-      // Light theme tint
+    // Iluminação e Party Mode
+    if (state.isPartyMode) {
+      // Luzes piscantes neon da festa
+      const partyColors = [
+        'rgba(236, 72, 153, 0.2)', // Rosa
+        'rgba(59, 130, 246, 0.2)', // Azul
+        'rgba(168, 85, 247, 0.2)', // Roxo
+        'rgba(34, 197, 94, 0.2)'   // Verde
+      ];
+      ctx.fillStyle = partyColors[Math.floor(this.frameCounter / 20) % partyColors.length];
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+      // Partículas de Confetes
+      ctx.save();
+      for (let p = 0; p < 20; p++) {
+        const cx = (Math.sin(this.frameCounter * 0.02 + p * 5) * 0.5 + 0.5) * canvasWidth;
+        const cy = ((this.frameCounter * (1 + (p % 3) * 0.3) + p * 40) % canvasHeight);
+        const confeteColors = ['#f43f5e', '#3b82f6', '#eab308', '#a855f7', '#10b981'];
+        ctx.fillStyle = confeteColors[p % confeteColors.length];
+        ctx.fillRect(cx, cy, 3 * zoom, 3 * zoom);
+      }
+      ctx.restore();
+    } else if (theme === 'default-layout-1' || theme === 'light') {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     } else {
-      // Dark or Hacker Basement
       const isHacker = theme === 'hacker-basement';
-      ctx.fillStyle = isHacker ? 'rgba(5, 20, 10, 0.45)' : 'rgba(9, 9, 11, 0.55)'; // Escurece menos no hacker para ver o chão
+      ctx.fillStyle = isHacker ? 'rgba(5, 20, 10, 0.45)' : 'rgba(9, 9, 11, 0.55)';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       
-      // Desenha luzes perto de PCs ligados
+      // Luzes perto de PCs ligados
       ctx.globalCompositeOperation = 'lighter';
       agents.forEach((agent) => {
         const isWorking = agent.status === 'typing' || agent.status === 'reading' || agent.status === 'thinking';
@@ -558,9 +763,9 @@ export class TileMapRenderer {
             const gradient = ctx.createRadialGradient(dx, dy, 0, dx, dy, 80 * zoom);
             
             if (isHacker) {
-              gradient.addColorStop(0, 'rgba(34, 197, 94, 0.4)'); // Verde Matrix
+              gradient.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
             } else {
-              gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Azulzinho de tela
+              gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
             }
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             
@@ -573,5 +778,61 @@ export class TileMapRenderer {
       });
       ctx.globalCompositeOperation = 'source-over';
     }
+  }
+
+  public getAgentAtCoordinates(
+    canvasWidth: number,
+    canvasHeight: number,
+    zoom: number,
+    mouseX: number,
+    mouseY: number,
+    panX: number,
+    panY: number
+  ): string | null {
+    if (!this.mapData) return null;
+    for (const [agentId, pos] of this.agentPos.entries()) {
+      const ax = pos.x;
+      const ay = pos.y;
+      const aw = 16 * zoom;
+      const ah = 32 * zoom;
+
+      if (mouseX >= ax && mouseX <= ax + aw && mouseY >= ay && mouseY <= ay + ah) {
+        return agentId;
+      }
+    }
+    return null;
+  }
+  
+  public getFurnitureAtCoordinates(
+    canvasWidth: number,
+    canvasHeight: number,
+    zoom: number,
+    mouseX: number,
+    mouseY: number,
+    panX: number,
+    panY: number
+  ): string | null {
+    if (!this.mapData || !this.mapData.furniture) return null;
+    
+    const TILE_SIZE = 16;
+    const cols = this.mapData.cols;
+    const rows = this.mapData.rows;
+    const s = TILE_SIZE * zoom;
+    const mapW = cols * s;
+    const mapH = rows * s;
+    const offsetX = Math.floor((canvasWidth - mapW) / 2 + panX);
+    const offsetY = Math.floor((canvasHeight - mapH) / 2 + panY);
+
+    for (const f of this.mapData.furniture) {
+      const fx = offsetX + f.col * s;
+      const fy = offsetY + f.row * s;
+      const fw = s;
+      const fh = s;
+
+      if (mouseX >= fx && mouseX <= fx + fw && mouseY >= fy && mouseY <= fy + fh) {
+        return f.uid;
+      }
+    }
+    return null;
   }
 }

@@ -53,6 +53,22 @@ export function getAgentLevelInfo(toolCallCount: number, locale: 'pt-BR' | 'en' 
   }
 }
 
+export interface Pet {
+  id: string;
+  name: string;
+  type: 'cat' | 'dog';
+  col: number;
+  row: number;
+  x: number;
+  y: number;
+  dir: number;
+  mirror: boolean;
+  targetCol: number;
+  targetRow: number;
+  walkProgress: number;
+  lastInteractTime: number;
+}
+
 export interface Desk {
   id: number;
   x: number;
@@ -72,6 +88,11 @@ export interface OfficeState {
   theme: string;
   locale: 'pt-BR' | 'en';
   customNames: Record<string, string>;
+  isDecorationMode: boolean;
+  selectedFurnitureId: string | null;
+  mapData: any;
+  pets: Record<string, Pet>;
+  isPartyMode: boolean;
 }
 
 export type HostMessage =
@@ -79,7 +100,8 @@ export type HostMessage =
   | { type: 'AGENT_STATUS_CHANGED'; agentId: string; status: AgentStatus; detail: string; tool: string | null }
   | { type: 'AGENT_REMOVED'; agentId: string }
   | { type: 'AGENT_SPEECH'; agentId: string; text: string; bubbleType: 'info' | 'warning' | 'done' | 'thinking' }
-  | { type: 'INIT_STATE'; state: OfficeState };
+  | { type: 'INIT_STATE'; state: OfficeState }
+  | { type: 'PARTY_MODE' };
 
 export type WebviewMessage =
   | { type: 'READY' }
@@ -90,4 +112,6 @@ export type WebviewMessage =
   | { type: 'SET_THEME'; theme: string }
   | { type: 'SWAP_CHARACTER'; agentId: string }
   | { type: 'FOCUS_AGENT'; agentId: string }
-  | { type: 'SET_AGENT_NAME'; agentId: string; name: string };
+  | { type: 'SET_AGENT_NAME'; agentId: string; name: string }
+  | { type: 'SAVE_LAYOUT'; theme: string; furniture: any[] }
+  | { type: 'UPDATE_PREFS'; zoom?: number; locale?: 'pt-BR' | 'en'; showSupervisorPanel?: boolean };

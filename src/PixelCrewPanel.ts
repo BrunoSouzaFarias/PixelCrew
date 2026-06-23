@@ -66,6 +66,11 @@ export class PixelCrewPanel {
             vscode.window.showInformationMessage(`Removendo agente: ${message.agentId}`);
             AgentRegistry.getInstance().removeAgent(message.agentId);
             return;
+          case 'SAVE_LAYOUT':
+            if (message.theme && message.furniture) {
+              this.context.globalState.update(`pixelcrew.layout.${message.theme}`, message.furniture);
+            }
+            return;
         }
       },
       null,
@@ -77,12 +82,20 @@ export class PixelCrewPanel {
     });
   }
 
+  public triggerPartyMode() {
+    this._panel.webview.postMessage({ type: 'PARTY_MODE' });
+  }
+
   private sendInitState() {
     const registry = AgentRegistry.getInstance();
     
     const zoom = this.context.globalState.get<number>('pixelcrew.zoom', 2);
     const locale = this.context.globalState.get<string>('pixelcrew.locale', 'pt-BR');
     const showSupervisorPanel = this.context.globalState.get<boolean>('pixelcrew.showSupervisor', true);
+
+    const darkFurniture = this.context.globalState.get<any[]>('pixelcrew.layout.dark', null);
+    const lightFurniture = this.context.globalState.get<any[]>('pixelcrew.layout.light', null);
+    const hackerFurniture = this.context.globalState.get<any[]>('pixelcrew.layout.hacker-basement', null);
 
     const state = {
       agents: registry.getAgents(),
@@ -97,6 +110,11 @@ export class PixelCrewPanel {
       showSupervisorPanel,
       theme: 'dark',
       locale,
+      customLayouts: {
+        'dark': darkFurniture,
+        'light': lightFurniture,
+        'hacker-basement': hackerFurniture
+      }
     };
     this._panel.webview.postMessage({ type: 'INIT_STATE', state });
   }
